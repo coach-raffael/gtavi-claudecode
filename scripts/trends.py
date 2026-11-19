@@ -2,7 +2,7 @@
 
 usage: python trends.py [--query "gta 6"] [--hours 24] [--limit 30] [--out trends.md]
 """
-import argparse, sys, time
+import argparse, json, sys, time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -22,6 +22,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", default="gta 6"); ap.add_argument("--hours", type=float, default=24)
     ap.add_argument("--limit", type=int, default=30); ap.add_argument("--out", default="trends.md")
+    ap.add_argument("--json", help="also write the ranked rows as JSON (for automation)")
     a = ap.parse_args()
     q = a.query.replace(" ", "+")
     flat = ytdlp_json(f"https://www.youtube.com/results?search_query={q}{UPLOAD_DATE_SORT}",
@@ -46,6 +47,9 @@ def main():
     for k, r in enumerate(rows, 1):
         md.append(f"| {k} | {r[0]:,.0f} | {r[1]:,} | {r[2]:.1f} | {r[3] / 60:.0f} | {r[4]} | [{r[5][:70]}]({r[6]}) | {'yes' if r[7] else ''} |")
     Path(a.out).write_text("\n".join(md) + "\n", encoding="utf-8")
+    if a.json:
+        keys = ("views_per_hour", "views", "age_hours", "duration", "channel", "title", "url", "most_replayed")
+        Path(a.json).write_text(json.dumps([dict(zip(keys, r)) for r in rows], ensure_ascii=False, indent=1), encoding="utf-8")
     print("\n".join(md[:14]))
     print(f"... {len(rows)} videos -> {a.out}")
 

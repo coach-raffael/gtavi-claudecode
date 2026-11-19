@@ -1,0 +1,434 @@
+{
+ "name": "GameInsight – stündliche GTA-6-Clips",
+ "nodes": [
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "hours",
+       "hoursInterval": 1
+      }
+     ]
+    }
+   },
+   "id": "2a394161-607a-4f58-a47a-fc06a383963e",
+   "name": "Stündlich",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    0,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "assignments": {
+     "assignments": [
+      {
+       "id": "1",
+       "name": "base_url",
+       "value": "https://clips.coach-raffael.com",
+       "type": "string"
+      },
+      {
+       "id": "2",
+       "name": "telegram_chat_id",
+       "value": "DEINE_CHAT_ID",
+       "type": "string"
+      },
+      {
+       "id": "3",
+       "name": "clips",
+       "value": 3,
+       "type": "number"
+      },
+      {
+       "id": "4",
+       "name": "layout",
+       "value": "blur",
+       "type": "string"
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "cd9c0019-c44d-4829-9f78-90d823b11d1d",
+   "name": "Config",
+   "type": "n8n-nodes-base.set",
+   "typeVersion": 3.4,
+   "position": [
+    220,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "method": "POST",
+    "url": "={{ $json.base_url }}/pipeline",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({query: 'gta 6', hours: 24, clips: $json.clips, layout: $json.layout, max_minutes: 90}) }}",
+    "options": {}
+   },
+   "id": "a208de18-c74b-476e-98e2-18832c284ad6",
+   "name": "Pipeline starten",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    440,
+    0
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "",
+     "name": "Clipdesk Token"
+    }
+   },
+   "onError": "continueErrorOutput"
+  },
+  {
+   "parameters": {
+    "amount": 10,
+    "unit": "minutes"
+   },
+   "id": "07d579ff-1d49-4e1b-bb2f-3d594268d615",
+   "name": "10 Min warten",
+   "type": "n8n-nodes-base.wait",
+   "typeVersion": 1.1,
+   "position": [
+    660,
+    0
+   ],
+   "webhookId": "57fbd6a1-94c2-4cd7-bc3d-b73730cac563"
+  },
+  {
+   "parameters": {
+    "url": "={{ $('Config').item.json.base_url }}/runs/{{ $('Pipeline starten').item.json.run }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "options": {}
+   },
+   "id": "c650e099-0ba4-46a7-b3ab-20812f384af8",
+   "name": "Status abfragen",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    880,
+    0
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "",
+     "name": "Clipdesk Token"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "combinator": "or",
+     "conditions": [
+      {
+       "id": "a",
+       "leftValue": "={{ $json.status }}",
+       "rightValue": "running",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      },
+      {
+       "id": "b",
+       "leftValue": "={{ $json.status }}",
+       "rightValue": "queued",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "56366ee3-e5df-4f6b-be28-09d2442f8bd2",
+   "name": "Läuft noch?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2,
+   "position": [
+    1100,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "typeValidation": "loose"
+     },
+     "combinator": "and",
+     "conditions": [
+      {
+       "id": "c",
+       "leftValue": "={{ $json.status }}",
+       "rightValue": "done",
+       "operator": {
+        "type": "string",
+        "operation": "equals"
+       }
+      },
+      {
+       "id": "d",
+       "leftValue": "={{ $json.clips.length }}",
+       "rightValue": 0,
+       "operator": {
+        "type": "number",
+        "operation": "gt"
+       }
+      }
+     ]
+    },
+    "options": {}
+   },
+   "id": "30b48fa1-f13e-419a-ad51-b5e36fea6ba6",
+   "name": "Fertig mit Clips?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2,
+   "position": [
+    1320,
+    100
+   ]
+  },
+  {
+   "parameters": {
+    "fieldToSplitOut": "clips",
+    "options": {}
+   },
+   "id": "3de18a75-52f8-48b9-a1d1-1d26fe0ca8d6",
+   "name": "Clips einzeln",
+   "type": "n8n-nodes-base.splitOut",
+   "typeVersion": 1,
+   "position": [
+    1540,
+    0
+   ]
+  },
+  {
+   "parameters": {
+    "url": "={{ $json.url }}",
+    "authentication": "genericCredentialType",
+    "genericAuthType": "httpHeaderAuth",
+    "options": {
+     "response": {
+      "response": {
+       "responseFormat": "file"
+      }
+     }
+    }
+   },
+   "id": "ea7d8ec6-0fd2-4cb7-9a1b-4dc47703369a",
+   "name": "Clip laden",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1760,
+    0
+   ],
+   "credentials": {
+    "httpHeaderAuth": {
+     "id": "",
+     "name": "Clipdesk Token"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "operation": "sendVideo",
+    "chatId": "={{ $('Config').item.json.telegram_chat_id }}",
+    "binaryData": true,
+    "additionalFields": {
+     "caption": "={{ ($('Clips einzeln').item.json.check === 'PASS' ? '✅' : '⚠️ Regelcheck FAIL') + '\\n\\n' + $('Clips einzeln').item.json.caption }}"
+    }
+   },
+   "id": "0b4f6354-96a0-48da-ab09-5e379c6c69ec",
+   "name": "An Telegram (Freigabe)",
+   "type": "n8n-nodes-base.telegram",
+   "typeVersion": 1.2,
+   "position": [
+    1980,
+    0
+   ],
+   "credentials": {
+    "telegramApi": {
+     "id": "",
+     "name": "Telegram GameInsight"
+    }
+   }
+  },
+  {
+   "parameters": {
+    "chatId": "={{ $('Config').item.json.telegram_chat_id }}",
+    "text": "=GameInsight-Lauf {{ $json.id }}: {{ $json.status }}{{ $json.error ? ' – ' + $json.error : '' }}\n{{ ($json.log || []).slice(-3).join('\\n') }}",
+    "additionalFields": {}
+   },
+   "id": "ce829b73-4e5c-4812-b0d6-22430f079fcb",
+   "name": "Kein Clip / Fehler melden",
+   "type": "n8n-nodes-base.telegram",
+   "typeVersion": 1.2,
+   "position": [
+    1540,
+    220
+   ],
+   "credentials": {
+    "telegramApi": {
+     "id": "",
+     "name": "Telegram GameInsight"
+    }
+   }
+  },
+  {
+   "parameters": {},
+   "id": "8bfb8d18-7739-4def-902a-e75dbda7fdea",
+   "name": "Busy / nicht erreichbar",
+   "type": "n8n-nodes-base.noOp",
+   "typeVersion": 1,
+   "position": [
+    660,
+    200
+   ]
+  }
+ ],
+ "connections": {
+  "Stündlich": {
+   "main": [
+    [
+     {
+      "node": "Config",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Config": {
+   "main": [
+    [
+     {
+      "node": "Pipeline starten",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Pipeline starten": {
+   "main": [
+    [
+     {
+      "node": "10 Min warten",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Busy / nicht erreichbar",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "10 Min warten": {
+   "main": [
+    [
+     {
+      "node": "Status abfragen",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Status abfragen": {
+   "main": [
+    [
+     {
+      "node": "Läuft noch?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Läuft noch?": {
+   "main": [
+    [
+     {
+      "node": "10 Min warten",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Fertig mit Clips?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Fertig mit Clips?": {
+   "main": [
+    [
+     {
+      "node": "Clips einzeln",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Kein Clip / Fehler melden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Clips einzeln": {
+   "main": [
+    [
+     {
+      "node": "Clip laden",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Clip laden": {
+   "main": [
+    [
+     {
+      "node": "An Telegram (Freigabe)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "settings": {
+  "executionOrder": "v1"
+ },
+ "pinData": {}
+}
