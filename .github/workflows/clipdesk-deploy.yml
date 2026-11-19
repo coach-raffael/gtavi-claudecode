@@ -10,7 +10,7 @@ name: clipdesk-deploy
 #
 # Needs (environment "production" of this repo):
 #   secrets  VPS_HOST, VPS_SSH_KEY, VPS_KNOWN_HOSTS (optional), CLIPDESK_TOKEN, ANTHROPIC_API_KEY (optional)
-#   vars     DOMAIN (e.g. clips.coach-raffael.com), SSH_USER (default langtutor-deploy, as in language-platform), APP_DIR (default /opt/gameinsight),
+#   vars     DOMAIN (e.g. clips.coach-raffael.com), SSH_USER (default langtutor-deploy, as in language-platform), APP_DIR (default gameinsight = ~/gameinsight of the SSH user, no sudo needed),
 #            TRAEFIK_ENTRYPOINT (default websecure), TRAEFIK_CERTRESOLVER (default letsencrypt) – as in language-platform
 
 on:
@@ -43,7 +43,7 @@ jobs:
       packages: read
     env:
       DOMAIN: ${{ vars.DOMAIN }}
-      APP_DIR: ${{ vars.APP_DIR || '/opt/gameinsight' }}
+      APP_DIR: ${{ vars.APP_DIR || 'gameinsight' }}
       IMAGE_TAG: ${{ inputs.image_tag || 'latest' }}
       SSH_USER: ${{ vars.SSH_USER || 'langtutor-deploy' }}
     steps:
