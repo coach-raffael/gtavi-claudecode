@@ -1,8 +1,10 @@
 # GameInsight clip desk on the Hostinger VPS (same host as language-platform).
-# .github/workflows/deploy.yml copies this file to ${APP_DIR}/compose.yml and writes the .env next to it.
+# .github/workflows/clipdesk-deploy.yml copies this file to ${APP_DIR}/compose.yml and writes the .env next to it.
 #
-# Entry is the global Traefik of the Hostinger Docker Manager (host network, resolver "letsencrypt",
-# exposedbydefault=false) – same pattern as language-platform. No published ports.
+# Entry is the global Traefik of the Hostinger Docker Manager (exposedbydefault=false) – same pattern as
+# language-platform. No published ports. If Traefik is NOT on the host network, the deploy workflow detects
+# its Docker network and writes a compose.override.yml that joins it (traefik.docker.network label included).
+# Router/service are prefixed "gameinsight-" so they cannot collide with routers of other stacks.
 
 name: gameinsight
 
@@ -25,10 +27,12 @@ services:
     networks: [internal]
     labels:
       traefik.enable: "true"
-      traefik.http.routers.clipdesk.rule: Host(`${DOMAIN}`)
-      traefik.http.routers.clipdesk.entrypoints: websecure
-      traefik.http.routers.clipdesk.tls.certresolver: letsencrypt
-      traefik.http.services.clipdesk.loadbalancer.server.port: "8088"
+      traefik.http.routers.gameinsight-clipdesk.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.gameinsight-clipdesk.entrypoints: ${TRAEFIK_ENTRYPOINT:-websecure}
+      traefik.http.routers.gameinsight-clipdesk.tls: "true"
+      traefik.http.routers.gameinsight-clipdesk.tls.certresolver: ${TRAEFIK_CERTRESOLVER:-letsencrypt}
+      traefik.http.routers.gameinsight-clipdesk.service: gameinsight-clipdesk
+      traefik.http.services.gameinsight-clipdesk.loadbalancer.server.port: "8088"
 
 networks:
   internal:

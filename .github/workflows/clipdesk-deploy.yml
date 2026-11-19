@@ -10,7 +10,8 @@ name: clipdesk-deploy
 #
 # Needs (environment "production" of this repo):
 #   secrets  VPS_HOST, VPS_SSH_KEY, VPS_KNOWN_HOSTS (optional), CLIPDESK_TOKEN, ANTHROPIC_API_KEY (optional)
-#   vars     DOMAIN (e.g. clips.coach-raffael.com), SSH_USER (default deploy), APP_DIR (default /opt/gameinsight)
+#   vars     DOMAIN (e.g. clips.coach-raffael.com), SSH_USER (default deploy), APP_DIR (default /opt/gameinsight),
+#            TRAEFIK_ENTRYPOINT (default websecure), TRAEFIK_CERTRESOLVER (default letsencrypt) – as in language-platform
 
 on:
   workflow_run:
@@ -79,6 +80,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HOOK_MODEL: ${{ vars.HOOK_MODEL }}
           RETAIN_DAYS: ${{ vars.RETAIN_DAYS }}
+          TRAEFIK_ENTRYPOINT: ${{ vars.TRAEFIK_ENTRYPOINT }}
+          TRAEFIK_CERTRESOLVER: ${{ vars.TRAEFIK_CERTRESOLVER }}
         run: |
           test -n "$DOMAIN" || { echo "::error::Variable DOMAIN fehlt"; exit 1; }
           test -n "$CLIPDESK_TOKEN" || { echo "::error::Secret CLIPDESK_TOKEN fehlt"; exit 1; }
@@ -92,16 +95,50 @@ jobs:
           ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
           HOOK_MODEL=${HOOK_MODEL:-claude-haiku-5-5}
           RETAIN_DAYS=${RETAIN_DAYS:-3}
+          TRAEFIK_ENTRYPOINT=${TRAEFIK_ENTRYPOINT:-websecure}
+          TRAEFIK_CERTRESOLVER=${TRAEFIK_CERTRESOLVER:-letsencrypt}
           EOF
 
       - name: Upload compose + env
         run: |
-          ssh vps "mkdir -p '$APP_DIR' && docker ps --format '{{.Image}}' | grep -q traefik || echo '::warning::Kein Traefik-Container gefunden'"
+          ssh vps "mkdir -p '$APP_DIR'"
           # data folder for clips + whisper models, owned by the container user (uid 1000) – via docker, no sudo needed
           ssh vps "docker run --rm -v /srv/gameinsight:/srv alpine sh -c 'mkdir -p /srv/data && chown 1000:1000 /srv/data'"
           scp infra/compose.prod.yml vps:"$APP_DIR/compose.yml"
           scp deploy.env vps:"$APP_DIR/.env"
           ssh vps "chmod 600 '$APP_DIR/.env'"
+
+      - name: Join the Traefik network
+        # Host-network Traefik reaches the container directly. A bridge-network Traefik only sees containers
+        # on its own network: then write compose.override.yml that joins it (docker compose picks it up).
+        run: |
+          ssh vps bash -s -- "$APP_DIR" <<'REMOTE'
+          set -eu
+          app="$1"
+          tid=$(docker ps --format '{{.ID}} {{.Image}} {{.Names}}' | awk 'tolower($0) ~ /traefik/ {print $1; exit}')
+          if [ -z "$tid" ]; then
+            echo "::warning::Kein Traefik-Container gefunden – Route wird nicht funktionieren"
+            rm -f "$app/compose.override.yml"; exit 0
+          fi
+          mode=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$tid")
+          if [ "$mode" = "host" ]; then
+            echo "Traefik läuft im Host-Netz – kein Override nötig"
+            rm -f "$app/compose.override.yml"; exit 0
+          fi
+          net=$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' "$tid" | grep -v '^$' | head -1)
+          echo "Traefik-Netz: $net"
+          cat > "$app/compose.override.yml" <<EOF
+          services:
+            clipdesk:
+              networks: [internal, traefik]
+              labels:
+                traefik.docker.network: "$net"
+          networks:
+            traefik:
+              external: true
+              name: "$net"
+          EOF
+          REMOTE
 
       - name: Pull & restart
         env:

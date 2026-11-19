@@ -28,6 +28,8 @@ ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 HASHTAGS = os.environ.get("HASHTAGS", "#GTA6 #GTAVI #GTA6Clips #GameInsight")
 
 JOBS = {"trends": 900, "streams": 600, "questions": 900, "live": 4 * 3600}  # script -> timeout (s)
+# whisper "small" on 3 CPUs needs roughly 0.3-0.6x the video length, so a 90-minute video can exceed 1 h
+MOMENTS_TIMEOUT = int(os.environ.get("MOMENTS_TIMEOUT", str(2 * 3600)))
 RUNS_DIR = DATA / "runs"
 STATE = DATA / "state.json"
 heavy = threading.Lock()
@@ -153,7 +155,7 @@ def pipeline(r):
     log(r, f"video: {pick['title'][:80]} ({pick['channel']}, {pick['views_per_hour']:.0f} views/h)")
     r["source"] = {k: pick[k] for k in ("title", "channel", "url", "views_per_hour")}
 
-    rc, out = script(r, "moments", [pick["url"], "--max-minutes", max_min], 3600)
+    rc, out = script(r, "moments", [pick["url"], "--max-minutes", max_min], MOMENTS_TIMEOUT)
     m = re.search(r"^job: (.+)$", out, re.M)
     if rc or not m:
         raise RuntimeError("moments failed")
@@ -298,10 +300,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "not found"})
 
 
+def mark_interrupted():
+    """Runs left as queued/running by a restart (deploy, OOM) would make n8n poll forever – mark them failed."""
+    if not RUNS_DIR.exists():
+        return
+    for f in RUNS_DIR.glob("*.json"):
+        try:
+            r = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if r.get("status") in ("queued", "running"):
+            r["status"], r["error"], r["finished"] = "failed", "interrupted by a server restart", time.time()
+            save_run(r)
+
+
 def main():
     if not TOKEN:
         sys.exit("CLIPDESK_TOKEN is not set – refusing to start without auth")
     DATA.mkdir(parents=True, exist_ok=True)
+    mark_interrupted()
     port = int(os.environ.get("PORT", "8088"))
     print(f"clipdesk on :{port}, data {DATA}, hooks {'on (' + HOOK_MODEL + ')' if ANTHROPIC_KEY else 'off'}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()

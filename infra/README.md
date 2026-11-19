@@ -26,13 +26,24 @@ n8n (stündlich) ──POST /pipeline──▶ clipdesk ──▶ trends → mom
    | Variable | `DOMAIN` | `clips.coach-raffael.com` |
    | Variable | `SSH_USER` | wie bei language-platform (Standard `deploy`) |
    | Variable | `DEPLOY_ENABLED` | `true` = nach jedem Image-Build automatisch ausrollen |
+   | Variable | `TRAEFIK_ENTRYPOINT` | optional, wie bei language-platform (Standard `websecure`) |
+   | Variable | `TRAEFIK_CERTRESOLVER` | optional, wie bei language-platform (Standard `letsencrypt`) |
+   | Variable | `HOOK_MODEL` / `RETAIN_DAYS` | optional (Standard `claude-haiku-5-5` / `3`) |
+
+   Router und Service heißen `gameinsight-clipdesk`, damit nichts mit anderen Stacks kollidiert.
+   Läuft Traefik nicht im Host-Netz, erkennt der Deploy sein Docker-Netz und legt
+   `compose.override.yml` an, die den Container dort einhängt.
 
 3. **Actions im Fork aktivieren** (bei Forks standardmäßig aus): Tab „Actions“ → „I understand…“.
 4. **Erstes Rollout:** Actions → `clipdesk-image` → Run workflow, danach `clipdesk-deploy` → Run workflow.
 5. **n8n:** `infra/n8n-gameinsight-workflow.json` importieren, dann
    - Credential „Clipdesk Token“ anlegen: *Header Auth*, Name `Authorization`, Wert `Bearer <CLIPDESK_TOKEN>`
    - Credential „Telegram GameInsight“ (Bot-Token) anlegen
-   - im Node **Config** `telegram_chat_id` eintragen, Workflow aktivieren.
+   - im Node **Config** `base_url` und `telegram_chat_id` eintragen
+   - erst nach einem erfolgreichen Testlauf aktivieren.
+
+Startet der Container während eines Laufs neu (Deploy, OOM), wird der Lauf beim Hochfahren als
+`failed` markiert, damit n8n nicht endlos weiter abfragt.
 
 ## Ressourcen
 
