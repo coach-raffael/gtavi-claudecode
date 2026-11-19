@@ -1,0 +1,128 @@
+name: clipdesk-deploy
+
+# Rolls the clip desk out to the existing Hostinger VPS – same pattern as
+# coach-raffael/language-platform: SSH, write compose.yml + .env, pull, up -d.
+# Traefik (Hostinger Docker Manager) routes ${DOMAIN} to the container via labels.
+#
+# - Automatically after a successful image build on main, once the repository
+#   variable DEPLOY_ENABLED=true is set.
+# - Manually via "Run workflow": image_tag = latest or a commit SHA (rollback).
+#
+# Needs (environment "production" of this repo):
+#   secrets  VPS_HOST, VPS_SSH_KEY, VPS_KNOWN_HOSTS (optional), CLIPDESK_TOKEN, ANTHROPIC_API_KEY (optional)
+#   vars     DOMAIN (e.g. clips.coach-raffael.com), SSH_USER (default deploy), APP_DIR (default /opt/gameinsight)
+
+on:
+  workflow_run:
+    workflows: [clipdesk-image]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (latest or commit SHA for rollback)"
+        type: string
+        default: latest
+
+concurrency:
+  group: clipdesk-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.DEPLOY_ENABLED == 'true' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event != 'pull_request')
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DOMAIN: ${{ vars.DOMAIN }}
+      APP_DIR: ${{ vars.APP_DIR || '/opt/gameinsight' }}
+      IMAGE_TAG: ${{ inputs.image_tag || 'latest' }}
+      SSH_USER: ${{ vars.SSH_USER || 'deploy' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH key and known hosts
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          test -n "$VPS_HOST" || { echo "::error::Secret VPS_HOST fehlt"; exit 1; }
+          test -n "$VPS_SSH_KEY" || { echo "::error::Secret VPS_SSH_KEY fehlt"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::VPS_KNOWN_HOSTS nicht gesetzt – Host-Key wird beim ersten Kontakt übernommen"
+            ssh-keyscan -T 15 "$VPS_HOST" > ~/.ssh/known_hosts
+          fi
+          cat > ~/.ssh/config <<EOF
+          Host vps
+            HostName $VPS_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+          EOF
+
+      - name: Render .env
+        env:
+          CLIPDESK_TOKEN: ${{ secrets.CLIPDESK_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          HOOK_MODEL: ${{ vars.HOOK_MODEL }}
+          RETAIN_DAYS: ${{ vars.RETAIN_DAYS }}
+        run: |
+          test -n "$DOMAIN" || { echo "::error::Variable DOMAIN fehlt"; exit 1; }
+          test -n "$CLIPDESK_TOKEN" || { echo "::error::Secret CLIPDESK_TOKEN fehlt"; exit 1; }
+          test -n "$ANTHROPIC_API_KEY" || echo "::warning::Secret ANTHROPIC_API_KEY fehlt – Clips bekommen keine Hooks"
+          cat > deploy.env <<EOF
+          # erzeugt von GitHub Actions (${GITHUB_SHA}) – nicht von Hand ändern
+          IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}
+          IMAGE_TAG=${IMAGE_TAG}
+          DOMAIN=${DOMAIN}
+          CLIPDESK_TOKEN=${CLIPDESK_TOKEN}
+          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+          HOOK_MODEL=${HOOK_MODEL:-claude-haiku-5-5}
+          RETAIN_DAYS=${RETAIN_DAYS:-3}
+          EOF
+
+      - name: Upload compose + env
+        run: |
+          ssh vps "mkdir -p '$APP_DIR' && docker ps --format '{{.Image}}' | grep -q traefik || echo '::warning::Kein Traefik-Container gefunden'"
+          # data folder for clips + whisper models, owned by the container user (uid 1000) – via docker, no sudo needed
+          ssh vps "docker run --rm -v /srv/gameinsight:/srv alpine sh -c 'mkdir -p /srv/data && chown 1000:1000 /srv/data'"
+          scp infra/compose.prod.yml vps:"$APP_DIR/compose.yml"
+          scp deploy.env vps:"$APP_DIR/.env"
+          ssh vps "chmod 600 '$APP_DIR/.env'"
+
+      - name: Pull & restart
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+        run: |
+          ssh vps "cd '$APP_DIR' \
+            && echo '$GHCR_TOKEN' | docker login ghcr.io -u '$GHCR_USER' --password-stdin \
+            && docker compose pull --quiet \
+            && docker compose up -d --remove-orphans \
+            && docker logout ghcr.io \
+            && docker image prune -f >/dev/null"
+
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 18); do
+            if curl -fsS --max-time 15 "https://${DOMAIN}/health" | grep -q '"status": "ok"'; then
+              echo "https://${DOMAIN} antwortet"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::https://${DOMAIN}/health antwortet nicht – DNS-Eintrag auf den VPS gesetzt? Zertifikat da?"
+          ssh vps "cd '$APP_DIR' && docker compose ps && docker compose logs --tail=80 clipdesk" || true
+          exit 1
