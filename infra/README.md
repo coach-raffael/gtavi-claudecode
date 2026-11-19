@@ -24,7 +24,7 @@ n8n (stündlich) ──POST /pipeline──▶ clipdesk ──▶ trends → mom
    | Secret | `CLIPDESK_TOKEN` | neu, z. B. `openssl rand -hex 32` |
    | Secret | `ANTHROPIC_API_KEY` | für die Hooks (ohne: Clips ohne Hook) |
    | Variable | `DOMAIN` | `clips.coach-raffael.com` |
-   | Variable | `SSH_USER` | wie bei language-platform (Standard `deploy`) |
+   | Variable | `SSH_USER` | wie bei language-platform (Standard `langtutor-deploy`) |
    | Variable | `DEPLOY_ENABLED` | `true` = nach jedem Image-Build automatisch ausrollen |
    | Variable | `TRAEFIK_ENTRYPOINT` | optional, wie bei language-platform (Standard `websecure`) |
    | Variable | `TRAEFIK_CERTRESOLVER` | optional, wie bei language-platform (Standard `letsencrypt`) |
