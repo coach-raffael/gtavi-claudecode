@@ -11,7 +11,7 @@ RUN fc-cache -f
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt "PyJWT[crypto]>=2.9"
 
 COPY scripts/ scripts/
 COPY skills/ skills/

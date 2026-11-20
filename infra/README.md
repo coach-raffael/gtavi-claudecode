@@ -45,6 +45,25 @@ n8n (stündlich) ──POST /pipeline──▶ clipdesk ──▶ trends → mom
 Startet der Container während eines Laufs neu (Deploy, OOM), wird der Lauf beim Hochfahren als
 `failed` markiert, damit n8n nicht endlos weiter abfragt.
 
+## MCP für Claude
+
+Der Clip Desk hat unter `https://clips.coach-raffael.com/mcp` einen MCP-Server (Streamable HTTP). Tools:
+`clipdesk_status`, `start_pipeline`, `start_job`, `list_runs`, `get_run`. Gepostet wird auch darüber nichts.
+
+Anmeldung per OAuth gegen Keycloak (Repo `coach-raffael/identity`, Client `clipdesk-mcp`, gleiches Muster
+wie `crm-mcp`). Das Access-Token braucht die Audience `clipdesk-api` und die Realm-Rolle `clipdesk-admin`.
+Alternativ nimmt `/mcp` auch das statische `CLIPDESK_TOKEN` (n8n, Tests).
+
+Einrichten:
+1. Im Repo `identity` das Secret `CLIPDESK_MCP_CLIENT_SECRET` setzen und den PR mit dem Client mergen.
+2. In Keycloak (Admin-Konsole → Users → Raffael → Role mapping) die Rolle `clipdesk-admin` zuweisen.
+3. In Claude: Einstellungen → Connectors → benutzerdefinierten Connector hinzufügen,
+   URL `https://clips.coach-raffael.com/mcp`, unter „Erweitert“ OAuth Client ID `clipdesk-mcp` und als
+   Client Secret den Wert von `CLIPDESK_MCP_CLIENT_SECRET`.
+
+Optional per Umgebung: `OIDC_ISSUER` (Standard `https://auth.coach-raffael.com/realms/coach-raffael`),
+`MCP_AUDIENCE` (`clipdesk-api`), `MCP_ROLE` (`clipdesk-admin`).
+
 ## Ressourcen
 
 KVM 4 hat 4 vCPU / 16 GB. Der Container ist auf 3 CPUs und 8 GB begrenzt, damit die
