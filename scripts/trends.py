@@ -11,10 +11,14 @@ from common import ytdlp_json
 UPLOAD_DATE_SORT = "&sp=CAI%253D"  # YouTube search sorted by upload date
 
 
+ERRORS = []
+
+
 def detail(url):
     try:
         return ytdlp_json(url, ["--skip-download"])
-    except SystemExit:
+    except SystemExit as e:  # run() exits with yt-dlp's stderr tail
+        ERRORS.append(str(e))
         return None
 
 
@@ -30,6 +34,13 @@ def main():
     urls = [e["url"] for e in flat.get("entries", []) if e.get("url") and "/shorts/" not in e["url"]]
     with ThreadPoolExecutor(6) as ex:
         infos = [i for i in ex.map(detail, urls) if i]
+    if ERRORS:
+        last = [l for l in ERRORS[0].splitlines() if l.strip()][-1:] or ["?"]
+        print(f"{len(ERRORS)} of {len(urls)} videos could not be read. First error: {last[0][:300]}", file=sys.stderr)
+        if "not a bot" in ERRORS[0]:
+            print("YouTube blocks this IP (bot check). Run trends from a residential connection (PC).", file=sys.stderr)
+    if urls and not infos:
+        sys.exit(f"trends failed: none of the {len(urls)} videos could be read")
     now = time.time(); rows = []
     for i in infos:
         t = i.get("timestamp") or i.get("release_timestamp")

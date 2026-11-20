@@ -4,7 +4,8 @@ Signals per second: loudness spikes, YouTube "most replayed" heatmap, live-chat 
 (YouTube VOD chat replay or a TwitchDownloader chat.json) and hype words in the transcript.
 Writes jobs/<id>/candidates.md + candidates.json.
 
-usage: python moments.py <url-or-file> [--top 8] [--min 15] [--max 40] [--chat chat.json] [--max-minutes 90]
+usage: python moments.py <url-or-file> [--top 8] [--min 15] [--max 40] [--chat chat.json] [--max-minutes 90] [--job DIR]
+--job: use this job folder (keeps an existing info.json), e.g. for an audio-only VOD window prepared by vods.py
 """
 import argparse, json, math, re, sys, wave
 from pathlib import Path
@@ -115,9 +116,17 @@ def main():
     ap.add_argument("src"); ap.add_argument("--top", type=int, default=8)
     ap.add_argument("--min", type=float, default=15); ap.add_argument("--max", type=float, default=40)
     ap.add_argument("--chat"); ap.add_argument("--max-minutes", type=int, default=90)
+    ap.add_argument("--job", help="job folder to use instead of a new one")
     a = ap.parse_args()
-    d = job_dir(a.src)
-    vid, info = fetch(a.src, d, a.max_minutes)
+    if a.job:
+        d = Path(a.job); d.mkdir(parents=True, exist_ok=True)
+        keep = load_json(d / "info.json") if (d / "info.json").exists() else None
+        vid, info = fetch(a.src, d, a.max_minutes)
+        if keep:
+            save_json(d / "info.json", keep); info = {**keep, **info}
+    else:
+        d = job_dir(a.src)
+        vid, info = fetch(a.src, d, a.max_minutes)
     dur = float(ffprobe(vid)["format"]["duration"])
     wav, db = audio_rms(vid, d)
     n = len(db)
