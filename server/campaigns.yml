@@ -1,0 +1,113 @@
+# GameInsight clip campaigns for the VPS clip desk (server/clipdesk.py).
+# Source of the rules: docs/campaign-rules.md (collected 2026-11-19). Change rules here, push, the image rebuilds.
+#
+# Per campaign:
+#   enabled         false = the desk refuses this campaign (rules missing or source not reachable from the VPS)
+#   rules_complete  false = clips are made, but every Telegram message says "do not post until the rules are clear"
+#   source          platform (twitch | kick | youtube) + channel login; youtube is blocked on the VPS (bot check),
+#                   those campaigns run on the PC
+#   since           only VODs that started on/after this UTC time
+#   deadline        no runs after this UTC time
+#   layout          9:16 layout; layout_locked = callers may not override it (e.g. a logo overlay must stay visible)
+#   caption         text that must be in every caption; hashtags are appended
+#   hook_rules      extra instructions for the Claude hook writer
+#   checklist       campaign-specific items, shown after the general checklist
+
+checklist:
+  - "9:16, English captions"
+  - "Source is the streamer's own stream/VOD in the allowed date range"
+  - "Streamer is the focus for the whole clip"
+  - "Hook in the first 1-2 seconds, matches what the clip shows"
+  - "Own thumbnail, caption matches the clip"
+  - "YouTube: tick 'includes paid promotion'"
+  - "No AI voices/footage, no fake reactions"
+  - "Keep public 30+ days, likes visible"
+
+campaigns:
+  kai:
+    name: Kai Cenat
+    enabled: true
+    rules_complete: false            # platforms and payout not given yet
+    source: {platform: twitch, channel: kaicenat}
+    layout: blur
+    caption: ""
+    hashtags: ["#KaiCenat", "#GTA6"]
+    hook_rules: "Kai Cenat playing GTA 6 must be the subject of the hook."
+    checklist:
+      - "Platforms and payout not confirmed yet: do not post"
+
+  dom:
+    name: Dom / dasgasd3m (RUCKUS)
+    enabled: true
+    rules_complete: true
+    source: {platform: kick, channel: dasgasd3m}
+    since: "2026-11-18T00:00:00Z"
+    deadline: "2026-12-20T07:59:00Z"
+    layout: blur
+    caption: "Credit: dasgasd3m on Kick – kick.com/dasgasd3m"
+    hashtags: ["#dasgasdom3", "#GTA6"]
+    hook_rules: >-
+      Use the pattern "Dasgas Dom reacts to ...", "... finds a GTA 6 glitch" or "... fails ..." only if the
+      transcript shows exactly that. Never invent an event. No spoiler in the hook.
+    checklist:
+      - "TikTok or YouTube Shorts only, on the GTA 6 account"
+      - "Setup, reaction and payoff in the clip, his face or voice"
+      - "Story clip: spoiler warning, no spoiler on the cover"
+      - "Submit the post link in Content Rewards within 30 minutes"
+      - "This post goes to this campaign only"
+
+  kreekcraft:
+    name: KreekCraft
+    enabled: true
+    rules_complete: true
+    source: {platform: twitch, channel: kreekcraft}   # official streams; check that the stream is his GTA 6 stream
+    layout: blur
+    layout_locked: true              # his logo overlay must stay visible for the whole clip
+    caption: "Watch KreekCraft on YouTube and Twitch"
+    hashtags: ["#GTA6", "#KreekCraft", "#GrandTheftAutoVI"]
+    hook_rules: "Strong hook in the first 1-2 seconds about what KreekCraft does in GTA 6."
+    checklist:
+      - "KreekCraft logo overlay visible the whole clip"
+      - "TikTok, Reels or Shorts only (no X)"
+      - "Post in English at US times (40% US/UK/CA/AU)"
+      - "Same clip at most 5 times"
+
+  dylan:
+    name: Dylan Page
+    enabled: false                   # YouTube source – blocked on the VPS, cut on the PC
+    rules_complete: true
+    source: {platform: youtube, channel: dylanpage}
+    since: "2026-11-19T00:00:00Z"
+    layout: blur
+    caption: ""
+    hashtags: ["#DylanPage", "#GTA6"]
+    checklist:
+      - "No GameInsight logo or other added branding"
+      - "No collab posts"
+
+  asianjeff:
+    name: AsianJeff
+    enabled: false                   # rules missing (reachclipping.com/AsianJeff)
+    rules_complete: false
+    source: {platform: twitch, channel: asianjeff}
+    layout: blur
+    caption: ""
+    hashtags: ["#GTA6"]
+
+  clix:
+    name: Clix
+    enabled: false                   # rules missing (reachclipping.com/ClixGTA)
+    rules_complete: false
+    source: {platform: twitch, channel: clix}
+    layout: blur
+    caption: ""
+    hashtags: ["#GTA6"]
+
+  yourrage:
+    name: YourRAGE
+    enabled: false                   # pool rules missing
+    rules_complete: false
+    source: {platform: twitch, channel: yourragegaming}
+    layout: blur
+    caption: ""
+    hashtags: ["#GTA6"]

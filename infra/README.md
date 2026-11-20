@@ -5,7 +5,8 @@ language-platform. Er bietet eine kleine HTTP-API (`server/clipdesk.py`), über 
 stündlich startet. Gepostet wird nichts automatisch: Die Clips kommen zur Freigabe per Telegram.
 
 ```
-n8n (stündlich) ──POST /pipeline──▶ clipdesk ──▶ trends → moments → cut (+Hook via Claude) → check
+n8n (stündlich) ──POST /pipeline {campaign}──▶ clipdesk ──▶ neuestes VOD-Fenster (Twitch/Kick, nur Audio)
+                                              → moments → 1080p-Abschnitte → cut (+Hook via Claude) → check
        ▲                                │
        └──── GET /runs/<id>, /files ◀───┘  ──▶ Telegram: Clip + Caption + Regelcheck
 ```
@@ -48,7 +49,7 @@ Startet der Container während eines Laufs neu (Deploy, OOM), wird der Lauf beim
 ## MCP für Claude
 
 Der Clip Desk hat unter `https://clips.coach-raffael.com/mcp` einen MCP-Server (Streamable HTTP). Tools:
-`clipdesk_status`, `start_pipeline`, `start_job`, `list_runs`, `get_run`. Gepostet wird auch darüber nichts.
+`clipdesk_status`, `list_campaigns`, `start_pipeline`, `start_job`, `list_runs`, `get_run`. Gepostet wird auch darüber nichts.
 
 Anmeldung per OAuth gegen Keycloak (Repo `coach-raffael/identity`, Client `clipdesk-mcp`, gleiches Muster
 wie `crm-mcp`). Das Access-Token braucht die Audience `clipdesk-api` und die Realm-Rolle `clipdesk-admin`.
@@ -75,13 +76,32 @@ Whisper-Modell ≈ 0,5 GB). Job-Ordner mit Quellvideos werden nach `RETAIN_DAYS`
 ```bash
 T="Authorization: Bearer $CLIPDESK_TOKEN"; B=https://clips.coach-raffael.com
 curl $B/health
-curl -H "$T" -X POST $B/pipeline -d '{"clips":2,"layout":"blur"}'      # → {"run": "..."}
+curl -H "$T" $B/campaigns                                               # Kampagnen aus campaigns.yml
+curl -H "$T" -X POST $B/pipeline -d '{"campaign":"kai","clips":2}'      # → {"run": "..."}; "auto" = nächste mit neuem Material
+curl -H "$T" -X POST $B/jobs/vods -d '{"args":["list","twitch","kaicenat"]}'  # VODs eines Kanals
 curl -H "$T" $B/runs/<id>                                              # Status, Log, Clips mit URL
 curl -H "$T" -X POST $B/jobs/streams -d '{"args":["--query","gta 6"]}'  # wer streamt gerade
 curl -H "$T" -X POST $B/jobs/live -d '{"args":["https://twitch.tv/<login>","--minutes","120"]}'
 ```
 
-## Bekanntes Risiko
+## Kampagnen
 
-YouTube kann Downloads von Rechenzentrums-IPs mit „Sign in to confirm you're not a bot“ blocken.
-Dann scheitert `trends`/`moments` im Log. Twitch und Kick sind davon meist nicht betroffen.
+Läufe gehen immer auf eine Kampagne aus `server/campaigns.yml` (Regeln: `docs/campaign-rules.md`):
+Quelle (Twitch-/Kick-Kanal), Zeitraum, Layout, Pflichttext, Hashtags, Hook-Regeln und Checkliste. Änderungen
+dort pushen, das Image baut neu.
+
+- Ein Lauf nimmt das **neueste unbearbeitete Stück** (Standard 45 min) des neuesten VODs. Was älter ist und
+  noch nicht bearbeitet wurde, wird übersprungen – frisches Material zuerst. Bei laufenden Streams bleiben
+  3 Minuten Abstand zur Live-Kante. Der Fortschritt je VOD steht in `/data/state.json`.
+- Geladen wird zuerst **nur der Ton** des Fensters (für Whisper und Lautstärke), danach nur die gewählten
+  Momente in 1080p. Ein 4-Stunden-Stream kostet so einige hundert MB statt 5–13 GB.
+- `rules_complete: false` (z. B. Kai Cenat): Clips entstehen, Telegram sagt „NICHT posten“.
+- `enabled: false`: Regeln fehlen oder Quelle ist YouTube.
+- Jeder Clip bringt einen fertigen Telegram-Text mit: Regelcheck, Kampagne, Quelle mit Zeitstempel,
+  Caption zum Kopieren und die Checkliste.
+
+## YouTube
+
+YouTube blockt den VPS („Sign in to confirm you're not a bot“). Entschieden: **YouTube-Quellen (Dylan Page)
+werden auf dem PC geschnitten**, der VPS macht nur Twitch und Kick. Keine Cookies, keine Proxies.
+`trends` meldet die Sperre jetzt im Log, statt still 0 Videos zu liefern.

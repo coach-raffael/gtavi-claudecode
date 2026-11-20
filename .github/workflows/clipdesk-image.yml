@@ -47,8 +47,10 @@ jobs:
           for i in $(seq 1 20); do curl -fsS localhost:8088/health && break; sleep 2; done
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8088/runs)" = 401
           docker exec cd ffmpeg -version | head -1
-          docker exec cd python -c "import faster_whisper, yt_dlp, cv2, jwt; print('deps ok')"
+          docker exec cd python -c "import faster_whisper, yt_dlp, cv2, jwt, yaml, curl_cffi; print('deps ok')"
           # MCP: without a token -> 401 with resource metadata, with the static token -> tools/list
           curl -s -o /dev/null -D - -X POST localhost:8088/mcp -d '{}' | grep -qi 'resource_metadata='
           curl -fsS -H 'Authorization: Bearer t' -H 'Content-Type: application/json' -X POST localhost:8088/mcp \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | grep -q start_pipeline
+          # campaigns.yml is in the image and parses
+          curl -fsS -H 'Authorization: Bearer t' localhost:8088/campaigns | grep -q '"id": "kai"'

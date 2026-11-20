@@ -11,11 +11,12 @@ RUN fc-cache -f
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt "PyJWT[crypto]>=2.9"
+# PyJWT: MCP token check; PyYAML: campaigns.yml; curl_cffi: browser TLS fingerprint for Kick (Cloudflare)
+RUN pip install --no-cache-dir -r requirements.txt "PyJWT[crypto]>=2.9" "PyYAML>=6" "curl_cffi>=0.7"
 
 COPY scripts/ scripts/
 COPY skills/ skills/
-COPY server/clipdesk.py server/clipdesk.py
+COPY server/clipdesk.py server/campaigns.yml server/
 
 ENV CLIP_DESK_HOME=/data \
     CLIPDESK_APP=/app \

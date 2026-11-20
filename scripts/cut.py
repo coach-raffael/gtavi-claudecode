@@ -208,23 +208,28 @@ def main():
     ap.add_argument("--allow-profanity", action="store_true", help="keep swear words in captions (slurs are always masked)")
     ap.add_argument("--cam", default="auto", help="auto (find the webcam) or x:y:w:h fractions")
     ap.add_argument("--start", type=float); ap.add_argument("--end", type=float)
+    ap.add_argument("--source", help="video to cut from instead of the job source (e.g. a downloaded 1080p section)")
+    ap.add_argument("--offset", type=float, default=0, help="time of --source's first frame on the job timeline (s)")
     a = ap.parse_args()
     d = Path(a.job); c = load_json(d / "candidates.json")
     pick = next(x for x in c["candidates"] if x["n"] == a.pick)
     s0 = a.start if a.start is not None else pick["start"]; e0 = a.end if a.end is not None else pick["end"]
+    if a.source:
+        c["source"] = str(a.source)
+    vs0, ve0 = s0 - a.offset, e0 - a.offset  # video timeline; captions stay on the job (transcript) timeline
     words = load_json(d / "transcript.json")
     out = d / "edits"; out.mkdir(exist_ok=True)
     layout, cam, side = a.layout, a.cam, 'right'
     face_expr = None
     if layout in ('react', 'facecam') and cam == 'auto':
         from facecam import find_cam
-        r = find_cam(c['source'], s0, e0)
+        r = find_cam(c['source'], vs0, ve0)
         if layout == 'react' and r.get('mode') not in ('cam', 'face'):
             sys.exit(f"skipped: no streamer face over gameplay in this moment ({r.get('mode')}: {r.get('reason', '')}). "
                      "React clips need the game on screen with the cam as a separate box. Pick another moment or stream.")
         if layout == 'react':
             from facecam import has_gameplay, face_crop_expr
-            if not has_gameplay(c['source'], s0, e0, r['box']):
+            if not has_gameplay(c['source'], vs0, ve0, r['box']):
                 sys.exit("skipped: the area outside the webcam is not gameplay (same scene or no game on screen). "
                          "Pick a moment where GTA 6 is on screen.")
             if r.get('mode') == 'face' and r.get('face_track'):
@@ -232,7 +237,7 @@ def main():
                 _vs = [x for x in _fp(c['source'])['streams'] if x.get('codec_type') == 'video'][0]
                 from facecam import inner_edges
                 sw_, sh_ = int(_vs['width']), int(_vs['height'])
-                bnd = inner_edges(c['source'], s0, e0, r['face'], sw_, sh_)
+                bnd = inner_edges(c['source'], vs0, ve0, r['face'], sw_, sh_)
                 print(f'facecam: cam borders L{bnd[0]} T{bnd[1]} R{bnd[2]} B{bnd[3]} px')
                 fe = face_crop_expr(r['face_track'], sw_, sh_, W, TOP, bounds=bnd)
                 face_expr = (fe['w'], fe['h'], fe['x'], fe['y'])
@@ -270,10 +275,10 @@ def main():
         from common import ffprobe
         vs = [x for x in ffprobe(c['source'])['streams'] if x.get('codec_type') == 'video'][0]
         src = (int(vs['width']), int(vs['height']))
-        gx = game_offset(c['source'], s0, e0, src, [float(t) for t in cam.split(':')])
+        gx = game_offset(c['source'], vs0, ve0, src, [float(t) for t in cam.split(':')])
     v = video_filter(layout, cam, ass, band=band, cam_side=side, src=src, game_x=gx, face_expr=face_expr)
     mp4 = out / f"clip_{a.pick}.mp4"
-    run([tool("ffmpeg"), "-y", "-v", "error", "-ss", f"{s0:.2f}", "-to", f"{e0:.2f}", "-i", c["source"],
+    run([tool("ffmpeg"), "-y", "-v", "error", "-ss", f"{vs0:.2f}", "-to", f"{ve0:.2f}", "-i", c["source"],
          "-filter_complex", v, "-map", "[vo]", "-map", "0:a?", "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
          "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k",
          "-ar", "48000", "-movflags", "+faststart", str(mp4)])
